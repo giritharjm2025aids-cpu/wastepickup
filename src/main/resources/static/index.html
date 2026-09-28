@@ -3,371 +3,446 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WastePickup Dashboard</title>
+    <title>WastePickup - Waste Collection Schedule &amp; Segregation Score Tracker</title>
+    <!-- Google Font: Plus Jakarta Sans & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
 
-<header class="header">
-    <div class="logo">
-        ♻️ WastePickup
-    </div>
+    <!-- Header Banner -->
+    <header class="top-header">
+        <div class="header-inner">
+            <div class="brand">
+                <div class="logo-box">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#4ade80" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M7 19H4.815a1.83 1.83 0 0 1-1.57-.881 1.785 1.785 0 0 1-.004-1.784L7.196 9.5"/>
+                        <path d="M11 19h8.2a1.8 1.8 0 0 0 1.57-.88 1.79 1.79 0 0 0 0-1.79l-4-7.33"/>
+                        <path d="M14.5 6.5 12 2 9.5 6.5"/>
+                        <path d="M12 2v10"/>
+                    </svg>
+                </div>
+                <div class="brand-text">
+                    <h1>WastePickup</h1>
+                    <p>Waste Collection Schedule &amp; Segregation Score Tracker</p>
+                </div>
+            </div>
+        </div>
+    </header>
 
-    <nav>
-        <a href="#dashboard">Dashboard</a>
-        <a href="#zones">Zones</a>
-        <a href="#households">Households</a>
-        <a href="#schedules">Schedules</a>
-        <a href="#pickups">Pickup Logs</a>
+    <!-- Navigation Tabs -->
+    <nav class="nav-bar">
+        <div class="nav-inner">
+            <button class="nav-tab active" data-tab="dashboard" id="tab-btn-dashboard">
+                <span class="tab-icon">📊</span> Dashboard
+            </button>
+            <button class="nav-tab" data-tab="zones" id="tab-btn-zones">
+                <span class="tab-icon">📍</span> Zones
+            </button>
+            <button class="nav-tab" data-tab="schedules" id="tab-btn-schedules">
+                <span class="tab-icon">🕒</span> Schedules
+            </button>
+            <button class="nav-tab" data-tab="households" id="tab-btn-households">
+                <span class="tab-icon">🏠</span> Households
+            </button>
+            <button class="nav-tab" data-tab="pickups" id="tab-btn-pickups">
+                <span class="tab-icon">🚛</span> Pickup Logs
+            </button>
+        </div>
     </nav>
-</header>
 
+    <!-- Main Container -->
+    <main class="main-content">
 
-<main>
+        <!-- ========================================== -->
+        <!-- TAB 1: DASHBOARD -->
+        <!-- ========================================== -->
+        <section id="tab-dashboard" class="tab-content active">
+            <!-- 4 KPI Cards -->
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-icon-wrap icon-zones">
+                        <span>📍</span>
+                    </div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">TOTAL ZONES</span>
+                        <span class="kpi-value" id="kpi-zones">0</span>
+                    </div>
+                </div>
 
-    <!-- Dashboard -->
-    <section id="dashboard" class="section">
-        <h1>Waste Collection Dashboard</h1>
-        <p class="subtitle">
-            Manage waste collection schedules and monitor segregation scores.
-        </p>
+                <div class="kpi-card">
+                    <div class="kpi-icon-wrap icon-households">
+                        <span>🏠</span>
+                    </div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">TOTAL HOUSEHOLDS</span>
+                        <span class="kpi-value" id="kpi-households">0</span>
+                    </div>
+                </div>
 
-        <div class="cards">
+                <div class="kpi-card">
+                    <div class="kpi-icon-wrap icon-pickups">
+                        <span>🚛</span>
+                    </div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">TOTAL PICKUP LOGS</span>
+                        <span class="kpi-value" id="kpi-pickups">0</span>
+                    </div>
+                </div>
 
-            <div class="card">
-                <h3>Total Zones</h3>
-                <p id="zoneCount">0</p>
+                <div class="kpi-card kpi-flagged">
+                    <div class="kpi-icon-wrap icon-flagged">
+                        <span>⚠️</span>
+                    </div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">FLAGGED HOUSEHOLDS</span>
+                        <span class="kpi-value text-red" id="kpi-flagged">0</span>
+                    </div>
+                </div>
             </div>
 
-            <div class="card">
-                <h3>Total Households</h3>
-                <p id="householdCount">0</p>
+            <!-- Two Columns: Zone Average Scores & Flagged Households -->
+            <div class="dash-grid">
+                <!-- Zone Average Segregation Scores Card -->
+                <div class="card dash-card">
+                    <div class="card-header">
+                        <h2 class="card-title"><span class="title-icon">📍</span> Zone Average Segregation Scores</h2>
+                        <button class="btn-refresh" id="btn-refresh-dashboard">Refresh</button>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ZONE ID</th>
+                                    <th>ZONE NAME</th>
+                                    <th>AVERAGE SCORE</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dash-zones-table">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Low-Score Flagged Households Card -->
+                <div class="card dash-card card-warning-accent">
+                    <div class="card-header">
+                        <div class="title-with-badge">
+                            <h2 class="card-title"><span class="title-icon">⚠️</span> Low-Score Flagged Households</h2>
+                            <span class="badge-attention">Needs Attention</span>
+                        </div>
+                    </div>
+                    <p class="card-desc">Households whose average segregation score is strictly below their minimum threshold.</p>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>HOUSEHOLD</th>
+                                    <th>ZONE</th>
+                                    <th>MIN SCORE</th>
+                                    <th>AVG SCORE</th>
+                                    <th>STATUS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dash-flagged-table">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
+        </section>
 
-            <div class="card">
-                <h3>Total Pickups</h3>
-                <p id="pickupCount">0</p>
+        <!-- ========================================== -->
+        <!-- TAB 2: ZONES -->
+        <!-- ========================================== -->
+        <section id="tab-zones" class="tab-content">
+            <div class="split-layout">
+                <!-- Left: Form -->
+                <div class="card form-card">
+                    <h2 class="card-title" id="zone-form-title">Add New Zone</h2>
+                    <form id="zone-form">
+                        <input type="hidden" id="zone-id">
+                        <div class="form-group">
+                            <label for="zone-name">Zone Name <span class="req">*</span></label>
+                            <input type="text" id="zone-name" placeholder="e.g. Zone 1, North Sector" required>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary" id="zone-submit-btn">Save Zone</button>
+                            <button type="button" class="btn-secondary hidden" id="zone-cancel-btn">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Right: Table -->
+                <div class="card table-card">
+                    <div class="card-header">
+                        <h2 class="card-title">Zone Directory</h2>
+                        <div class="search-box">
+                            <input type="text" id="search-zones" placeholder="Search zones">
+                        </div>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>ZONE NAME</th>
+                                    <th>AVG SCORE</th>
+                                    <th>ACTIONS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="zones-table-body">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
+        </section>
 
-            <div class="card warning">
-                <h3>Flagged Households</h3>
-                <p id="flaggedCount">0</p>
+        <!-- ========================================== -->
+        <!-- TAB 3: SCHEDULES -->
+        <!-- ========================================== -->
+        <section id="tab-schedules" class="tab-content">
+            <div class="split-layout">
+                <!-- Left: Form -->
+                <div class="card form-card">
+                    <h2 class="card-title" id="schedule-form-title">Add Collection Schedule</h2>
+                    <form id="schedule-form">
+                        <input type="hidden" id="schedule-id">
+                        <div class="form-group">
+                            <label for="schedule-zone">Select Zone <span class="req">*</span></label>
+                            <select id="schedule-zone" required>
+                                <option value="">-- Choose Zone --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="schedule-day">Pickup Day <span class="req">*</span></label>
+                            <select id="schedule-day" required>
+                                <option value="">-- Select Day --</option>
+                                <option value="MONDAY">MONDAY</option>
+                                <option value="TUESDAY">TUESDAY</option>
+                                <option value="WEDNESDAY">WEDNESDAY</option>
+                                <option value="THURSDAY">THURSDAY</option>
+                                <option value="FRIDAY">FRIDAY</option>
+                                <option value="SATURDAY">SATURDAY</option>
+                                <option value="SUNDAY">SUNDAY</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="schedule-start">Start Time <span class="req">*</span></label>
+                                <input type="time" id="schedule-start" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="schedule-end">End Time <span class="req">*</span></label>
+                                <input type="time" id="schedule-end" required>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary" id="schedule-submit-btn">Save Schedule</button>
+                            <button type="button" class="btn-secondary hidden" id="schedule-cancel-btn">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Right: Table -->
+                <div class="card table-card">
+                    <div class="card-header">
+                        <h2 class="card-title">Active Collection Schedules</h2>
+                        <div class="search-box">
+                            <input type="text" id="search-schedules" placeholder="Search schedules">
+                        </div>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>ZONE</th>
+                                    <th>PICKUP DAY</th>
+                                    <th>START TIME</th>
+                                    <th>END TIME</th>
+                                    <th>ACTIONS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="schedules-table-body">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
-
-        </div>
-    </section>
-
-
-    <!-- Zones -->
-    <section id="zones" class="section">
-
-        <h2>Zone Management</h2>
-
-        <div class="form-box">
-
-            <h3>Add New Zone</h3>
-
-            <form id="zoneForm">
-
-                <input
-                        type="text"
-                        id="zoneName"
-                        placeholder="Enter zone name"
-                        required
-                >
-
-                <button type="submit">Add Zone</button>
-
-            </form>
-
-        </div>
-
-        <div class="table-box">
-
-            <h3>Zones</h3>
-
-            <table>
-
-                <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Zone Name</th>
-                </tr>
-                </thead>
-
-                <tbody id="zoneTableBody">
-                </tbody>
-
-            </table>
-
-        </div>
-
-    </section>
-
-
-    <!-- Households -->
-    <section id="households" class="section">
-
-        <h2>Household Management</h2>
-
-        <div class="form-box">
-
-            <h3>Add Household</h3>
-
-            <form id="householdForm">
-
-                <input
-                        type="text"
-                        id="householdName"
-                        placeholder="Household name"
-                        required
-                >
-
-                <input
-                        type="text"
-                        id="address"
-                        placeholder="Address"
-                        required
-                >
-
-                <select id="householdZone" required>
-                    <option value="">Select Zone</option>
-                </select>
-
-                <button type="submit">Add Household</button>
-
-            </form>
-
-        </div>
-
-
-        <div class="table-box">
-
-            <h3>Households</h3>
-
-            <table>
-
-                <thead>
-
-                <tr>
-                    <th>ID</th>
-                    <th>Household</th>
-                    <th>Address</th>
-                    <th>Zone</th>
-                    <th>Status</th>
-                </tr>
-
-                </thead>
-
-                <tbody id="householdTableBody">
-                </tbody>
-
-            </table>
-
-        </div>
-
-    </section>
-
-
-    <!-- Schedules -->
-    <section id="schedules" class="section">
-
-        <h2>Collection Schedules</h2>
-
-        <div class="form-box">
-
-            <h3>Add Schedule</h3>
-
-            <form id="scheduleForm">
-
-                <select id="scheduleZone" required>
-                    <option value="">Select Zone</option>
-                </select>
-
-                <select id="dayOfWeek" required>
-
-                    <option value="">Select Day</option>
-                    <option value="MONDAY">Monday</option>
-                    <option value="TUESDAY">Tuesday</option>
-                    <option value="WEDNESDAY">Wednesday</option>
-                    <option value="THURSDAY">Thursday</option>
-                    <option value="FRIDAY">Friday</option>
-                    <option value="SATURDAY">Saturday</option>
-                    <option value="SUNDAY">Sunday</option>
-
-                </select>
-
-                <label>Start Time</label>
-
-                <input
-                        type="time"
-                        id="startTime"
-                        required
-                >
-
-                <label>End Time</label>
-
-                <input
-                        type="time"
-                        id="endTime"
-                        required
-                >
-
-                <button type="submit">Add Schedule</button>
-
-            </form>
-
-        </div>
-
-
-        <div class="table-box">
-
-            <h3>Schedules</h3>
-
-            <table>
-
-                <thead>
-
-                <tr>
-                    <th>ID</th>
-                    <th>Zone</th>
-                    <th>Day</th>
-                    <th>Start Time</th>
-                    <th>End Time</th>
-                </tr>
-
-                </thead>
-
-                <tbody id="scheduleTableBody">
-                </tbody>
-
-            </table>
-
-        </div>
-
-    </section>
-
-
-    <!-- Pickup Logs -->
-    <section id="pickups" class="section">
-
-        <h2>Pickup Logs</h2>
-
-        <div class="form-box">
-
-            <h3>Record Waste Pickup</h3>
-
-            <form id="pickupForm">
-
-                <select id="pickupHousehold" required>
-                    <option value="">Select Household</option>
-                </select>
-
-                <input
-                        type="datetime-local"
-                        id="pickupTime"
-                        required
-                >
-
-                <input
-                        type="number"
-                        id="segregationScore"
-                        placeholder="Segregation Score (0-100)"
-                        min="0"
-                        max="100"
-                        required
-                >
-
-                <input
-                        type="text"
-                        id="collectorName"
-                        placeholder="Collector Name"
-                >
-
-                <button type="submit">Record Pickup</button>
-
-            </form>
-
-        </div>
-
-
-        <div class="table-box">
-
-            <h3>Pickup History</h3>
-
-            <table>
-
-                <thead>
-
-                <tr>
-                    <th>ID</th>
-                    <th>Household</th>
-                    <th>Pickup Time</th>
-                    <th>Score</th>
-                    <th>Collector</th>
-                </tr>
-
-                </thead>
-
-                <tbody id="pickupTableBody">
-                </tbody>
-
-            </table>
-
-        </div>
-
-    </section>
-
-
-    <!-- Flagged Households -->
-
-    <section class="section">
-
-        <h2>Flagged Households</h2>
-
-        <p>
-            Households with an average segregation score below 50 are flagged.
-        </p>
-
-        <div class="table-box">
-
-            <table>
-
-                <thead>
-
-                <tr>
-                    <th>ID</th>
-                    <th>Household</th>
-                    <th>Address</th>
-                    <th>Zone</th>
-                    <th>Status</th>
-                </tr>
-
-                </thead>
-
-                <tbody id="flaggedTableBody">
-                </tbody>
-
-            </table>
-
-        </div>
-
-    </section>
-
-</main>
-
-
-<footer>
-
-    <p>
-        © 2026 WastePickup | Waste Collection Management System
-    </p>
-
-</footer>
-
-
-<script src="script.js"></script>
-
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 4: HOUSEHOLDS -->
+        <!-- ========================================== -->
+        <section id="tab-households" class="tab-content">
+            <div class="split-layout">
+                <!-- Left: Form -->
+                <div class="card form-card">
+                    <h2 class="card-title" id="household-form-title">Add Household</h2>
+                    <form id="household-form">
+                        <input type="hidden" id="household-id">
+                        <div class="form-group">
+                            <label for="household-name">Household Name <span class="req">*</span></label>
+                            <input type="text" id="household-name" placeholder="e.g. Ravi Family" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="household-address">Address <span class="req">*</span></label>
+                            <input type="text" id="household-address" placeholder="e.g. 12 Gandhi Street" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="household-phone">Phone Number <span class="req">*</span></label>
+                            <input type="tel" id="household-phone" placeholder="e.g. 9876543210" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="household-zone">Zone <span class="req">*</span></label>
+                            <select id="household-zone" required>
+                                <option value="">-- Choose Zone --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="household-minscore">Minimum Passing Score</label>
+                            <input type="number" id="household-minscore" value="50" min="0" max="100">
+                            <span class="field-hint">Default threshold is 50. If average drops below this, household is FLAGGED.</span>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary" id="household-submit-btn">Save Household</button>
+                            <button type="button" class="btn-secondary hidden" id="household-cancel-btn">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Right: Table -->
+                <div class="card table-card">
+                    <div class="card-header">
+                        <h2 class="card-title">Registered Households</h2>
+                        <div class="search-box">
+                            <input type="text" id="search-households" placeholder="Search households">
+                        </div>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>NAME</th>
+                                    <th>ADDRESS</th>
+                                    <th>PHONE</th>
+                                    <th>ZONE</th>
+                                    <th>MIN SCORE</th>
+                                    <th>AVG SCORE</th>
+                                    <th>STATUS</th>
+                                    <th>ACTIONS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="households-table-body">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 5: PICKUP LOGS -->
+        <!-- ========================================== -->
+        <section id="tab-pickups" class="tab-content">
+            <div class="split-layout">
+                <!-- Left: Form -->
+                <div class="card form-card">
+                    <h2 class="card-title" id="pickup-form-title">Record Waste Pickup</h2>
+
+                    <!-- Success Alert Banner -->
+                    <div id="pickup-alert-success" class="alert-success hidden">
+                        <span class="alert-icon">✓</span>
+                        <span id="pickup-alert-text">Waste pickup logged successfully! Score: 72</span>
+                    </div>
+
+                    <form id="pickup-form">
+                        <input type="hidden" id="pickup-id">
+                        <div class="form-group">
+                            <label for="pickup-household">Household <span class="req">*</span></label>
+                            <select id="pickup-household" required>
+                                <option value="">-- Select Household --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="pickup-schedule">Scheduled Window <span class="req">*</span></label>
+                            <select id="pickup-schedule" required>
+                                <option value="">-- Select Schedule Window --</option>
+                            </select>
+                            <span class="field-hint">Must match household's assigned zone!</span>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="pickup-date">Pickup Date <span class="req">*</span></label>
+                                <input type="date" id="pickup-date" required>
+                                <span class="field-hint">Day must match the scheduled day.</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="pickup-time">Pickup Time <span class="req">*</span></label>
+                                <input type="time" id="pickup-time" required>
+                                <span class="field-hint">Must be within start and end time.</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="pickup-score">Segregation Score (0 – 100) <span class="req">*</span></label>
+                            <input type="number" id="pickup-score" min="0" max="100" placeholder="e.g. 85" required>
+                            <span class="field-hint">High score = good wet/dry separation; Low score = mixed waste.</span>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary" id="pickup-submit-btn">Record Pickup</button>
+                            <button type="button" class="btn-secondary hidden" id="pickup-cancel-btn">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Right: Table -->
+                <div class="card table-card">
+                    <div class="card-header">
+                        <h2 class="card-title">Pickup Log Records</h2>
+                        <div class="search-box">
+                            <input type="text" id="search-pickups" placeholder="Search pickup logs">
+                        </div>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>HOUSEHOLD</th>
+                                    <th>ZONE</th>
+                                    <th>SCHEDULE WINDOW</th>
+                                    <th>DATE</th>
+                                    <th>TIME</th>
+                                    <th>SCORE</th>
+                                    <th>ACTIONS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pickups-table-body">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+        <p>WastePickup • Waste Collection Schedule and Segregation Score Tracker • Spring Boot + MySQL + Vanilla Web</p>
+    </footer>
+
+    <script src="script.js"></script>
 </body>
 </html>

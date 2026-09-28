@@ -65,9 +65,6 @@ public class HouseholdService {
         if (household.getPhone() == null || household.getPhone().trim().isEmpty()) {
             throw new RuntimeException("Phone cannot be empty.");
         }
-        if (household.getZone() == null || household.getZone().getId() == null) {
-            throw new RuntimeException("Zone is required for household.");
-        }
 
         Zone zone = zoneRepository.findById(household.getZone().getId())
                 .orElseThrow(() -> new RuntimeException("Zone not found with id: " + household.getZone().getId()));

@@ -1,610 +1,937 @@
+// ============================================================
+// WastePickup - Client Side Controller
+// Seamless REST API Integration with Spring Boot
+// ============================================================
+
 const API = "/api";
 
+// Global In-Memory Stores
 let zones = [];
 let households = [];
 let schedules = [];
 let pickups = [];
+let zoneScores = {}; // Map of zoneId -> average score
 
+// Current Edit Targets (null if adding new)
+let editZoneId = null;
+let editScheduleId = null;
+let editHouseholdId = null;
+let editPickupId = null;
 
-// ===============================
-// Load Data
-// ===============================
+// ============================================================
+// Initialization & Tab Navigation
+// ============================================================
+document.addEventListener("DOMContentLoaded", () => {
+    setupTabNavigation();
+    setupFormListeners();
+    setupSearchFilters();
+    setupDropdownCascades();
 
-async function loadData() {
-    try {
-        await loadZones();
-        await loadHouseholds();
-        await loadSchedules();
-        await loadPickups();
-        await loadFlaggedHouseholds();
-        updateDashboard();
-    } catch (error) {
-        console.error("Error loading data:", error);
-        alert("Unable to connect to the Spring Boot server.");
-    }
-}
+    // Initial Data Fetch
+    loadAllData();
+});
 
+function setupTabNavigation() {
+    const tabs = document.querySelectorAll(".nav-tab");
+    tabs.forEach(tab => {
+        tab.addEventListener("click", () => {
+            const target = tab.getAttribute("data-tab");
 
-// ===============================
-// Zones
-// ===============================
+            // Update Tab Buttons
+            tabs.forEach(t => t.classList.remove("active"));
+            tab.classList.add("active");
 
-async function loadZones() {
+            // Update Tab Sections
+            document.querySelectorAll(".tab-content").forEach(sec => {
+                sec.classList.remove("active");
+            });
+            const activeSection = document.getElementById(`tab-${target}`);
+            if (activeSection) {
+                activeSection.classList.add("active");
+            }
 
-    const response = await fetch(`${API}/zones`);
-
-    if (!response.ok) {
-        throw new Error("Failed to load zones");
-    }
-
-    zones = await response.json();
-
-    displayZones();
-    updateZoneDropdowns();
-}
-
-
-function displayZones() {
-
-    const table = document.getElementById("zoneTableBody");
-
-    table.innerHTML = "";
-
-    zones.forEach(zone => {
-
-        const row = document.createElement("tr");
-
-        row.innerHTML = `
-            <td>${zone.id}</td>
-            <td>${zone.name}</td>
-        `;
-
-        table.appendChild(row);
-    });
-}
-
-
-function updateZoneDropdowns() {
-
-    const householdZone = document.getElementById("householdZone");
-    const scheduleZone = document.getElementById("scheduleZone");
-
-    householdZone.innerHTML =
-        '<option value="">Select Zone</option>';
-
-    scheduleZone.innerHTML =
-        '<option value="">Select Zone</option>';
-
-    zones.forEach(zone => {
-
-        householdZone.innerHTML += `
-            <option value="${zone.id}">
-                ${zone.name}
-            </option>
-        `;
-
-        scheduleZone.innerHTML += `
-            <option value="${zone.id}">
-                ${zone.name}
-            </option>
-        `;
-    });
-}
-
-
-// Add Zone
-
-document.getElementById("zoneForm").addEventListener("submit", async function(event) {
-
-    event.preventDefault();
-
-    const name = document.getElementById("zoneName").value.trim();
-
-    if (!name) {
-        alert("Please enter zone name.");
-        return;
-    }
-
-    try {
-
-        const response = await fetch(`${API}/zones`, {
-
-            method: "POST",
-
-            headers: {
-                "Content-Type": "application/json"
-            },
-
-            body: JSON.stringify({
-                name: name
-            })
+            // Hide success alerts if any when navigating
+            const alertSuccess = document.getElementById("pickup-alert-success");
+            if (alertSuccess) alertSuccess.classList.add("hidden");
         });
+    });
 
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || "Failed to add zone");
-        }
-
-        alert("Zone added successfully!");
-
-        document.getElementById("zoneForm").reset();
-
-        await loadZones();
-
-        updateDashboard();
-
-    } catch (error) {
-
-        alert(error.message);
-    }
-});
-
-
-// ===============================
-// Households
-// ===============================
-
-async function loadHouseholds() {
-
-    const response = await fetch(`${API}/households`);
-
-    if (!response.ok) {
-        throw new Error("Failed to load households");
-    }
-
-    households = await response.json();
-
-    displayHouseholds();
-    updateHouseholdDropdown();
-}
-
-
-function displayHouseholds() {
-
-    const table = document.getElementById("householdTableBody");
-
-    table.innerHTML = "";
-
-    households.forEach(household => {
-
-        const row = document.createElement("tr");
-
-        const status = household.flagged
-            ? '<span class="status-flagged">Flagged</span>'
-            : '<span class="status-good">Good</span>';
-
-        row.innerHTML = `
-            <td>${household.id}</td>
-            <td>${household.householdName}</td>
-            <td>${household.address}</td>
-            <td>${household.zone ? household.zone.name : "-"}</td>
-            <td>${status}</td>
-        `;
-
-        table.appendChild(row);
+    document.getElementById("btn-refresh-dashboard").addEventListener("click", () => {
+        loadAllData();
     });
 }
 
-
-function updateHouseholdDropdown() {
-
-    const dropdown = document.getElementById("pickupHousehold");
-
-    dropdown.innerHTML =
-        '<option value="">Select Household</option>';
-
-    households.forEach(household => {
-
-        dropdown.innerHTML += `
-            <option value="${household.id}">
-                ${household.householdName}
-            </option>
-        `;
-    });
-}
-
-
-// Add Household
-
-document.getElementById("householdForm").addEventListener("submit", async function(event) {
-
-    event.preventDefault();
-
-    const householdName =
-        document.getElementById("householdName").value.trim();
-
-    const address =
-        document.getElementById("address").value.trim();
-
-    const zoneId =
-        document.getElementById("householdZone").value;
-
-    if (!householdName || !address || !zoneId) {
-
-        alert("Please fill all household details.");
-
-        return;
-    }
-
+// ============================================================
+// Master Data Loader
+// ============================================================
+async function loadAllData() {
     try {
+        await Promise.all([
+            fetchZones(),
+            fetchHouseholds(),
+            fetchSchedules(),
+            fetchPickups()
+        ]);
 
-        const response = await fetch(
-            `${API}/households/${zoneId}`,
-            {
-                method: "POST",
+        // After all data is retrieved, fetch average scores for zones
+        await fetchZoneAverageScores();
 
-                headers: {
-                    "Content-Type": "application/json"
-                },
+        // Render everything
+        renderDashboard();
+        renderZonesTable();
+        renderSchedulesTable();
+        renderHouseholdsTable();
+        renderPickupsTable();
 
-                body: JSON.stringify({
-                    householdName: householdName,
-                    address: address,
-                    flagged: false
-                })
-            }
-        );
-
-        if (!response.ok) {
-
-            const error = await response.json();
-
-            throw new Error(
-                error.error || "Failed to add household"
-            );
-        }
-
-        alert("Household added successfully!");
-
-        document.getElementById("householdForm").reset();
-
-        await loadHouseholds();
-
-        updateDashboard();
-
-    } catch (error) {
-
-        alert(error.message);
+        // Populate Form Select Dropdowns
+        updateDropdowns();
+    } catch (err) {
+        console.error("Error loading application data:", err);
     }
-});
-
-
-// ===============================
-// Schedules
-// ===============================
-
-async function loadSchedules() {
-
-    const response = await fetch(`${API}/schedules`);
-
-    if (!response.ok) {
-        throw new Error("Failed to load schedules");
-    }
-
-    schedules = await response.json();
-
-    displaySchedules();
 }
 
-
-function displaySchedules() {
-
-    const table =
-        document.getElementById("scheduleTableBody");
-
-    table.innerHTML = "";
-
-    schedules.forEach(schedule => {
-
-        const row = document.createElement("tr");
-
-        row.innerHTML = `
-            <td>${schedule.id}</td>
-            <td>${schedule.zone ? schedule.zone.name : "-"}</td>
-            <td>${schedule.dayOfWeek}</td>
-            <td>${schedule.startTime}</td>
-            <td>${schedule.endTime}</td>
-        `;
-
-        table.appendChild(row);
-    });
-}
-
-
-// Add Schedule
-
-document.getElementById("scheduleForm").addEventListener("submit", async function(event) {
-
-    event.preventDefault();
-
-    const zoneId =
-        document.getElementById("scheduleZone").value;
-
-    const dayOfWeek =
-        document.getElementById("dayOfWeek").value;
-
-    const startTime =
-        document.getElementById("startTime").value;
-
-    const endTime =
-        document.getElementById("endTime").value;
-
-    if (!zoneId || !dayOfWeek || !startTime || !endTime) {
-
-        alert("Please fill all schedule details.");
-
-        return;
-    }
-
-    if (startTime >= endTime) {
-
-        alert("End time must be after start time.");
-
-        return;
-    }
-
+// ============================================================
+// API Fetchers
+// ============================================================
+async function fetchZones() {
     try {
-
-        const response = await fetch(
-            `${API}/schedules/${zoneId}`,
-            {
-                method: "POST",
-
-                headers: {
-                    "Content-Type": "application/json"
-                },
-
-                body: JSON.stringify({
-                    dayOfWeek: dayOfWeek,
-                    startTime: startTime + ":00",
-                    endTime: endTime + ":00"
-                })
-            }
-        );
-
-        if (!response.ok) {
-
-            const error = await response.json();
-
-            throw new Error(
-                error.error || "Failed to add schedule"
-            );
-        }
-
-        alert("Schedule added successfully!");
-
-        document.getElementById("scheduleForm").reset();
-
-        await loadSchedules();
-
-    } catch (error) {
-
-        alert(error.message);
-    }
-});
-
-
-// ===============================
-// Pickup Logs
-// ===============================
-
-async function loadPickups() {
-
-    const response = await fetch(`${API}/pickups`);
-
-    if (!response.ok) {
-        throw new Error("Failed to load pickup logs");
-    }
-
-    pickups = await response.json();
-
-    displayPickups();
+        const res = await fetch(`${API}/zones`);
+        if (res.ok) zones = await res.json();
+    } catch (e) { console.error("Error fetching zones", e); }
 }
 
-
-function displayPickups() {
-
-    const table =
-        document.getElementById("pickupTableBody");
-
-    table.innerHTML = "";
-
-    pickups.forEach(pickup => {
-
-        const row = document.createElement("tr");
-
-        const householdName =
-            pickup.household
-                ? pickup.household.householdName
-                : "-";
-
-        row.innerHTML = `
-            <td>${pickup.id}</td>
-            <td>${householdName}</td>
-            <td>${formatDateTime(pickup.pickupTime)}</td>
-            <td>${pickup.segregationScore}</td>
-            <td>${pickup.collectorName || "-"}</td>
-        `;
-
-        table.appendChild(row);
-    });
-}
-
-
-// Add Pickup
-
-document.getElementById("pickupForm").addEventListener("submit", async function(event) {
-
-    event.preventDefault();
-
-    const householdId =
-        document.getElementById("pickupHousehold").value;
-
-    const pickupTime =
-        document.getElementById("pickupTime").value;
-
-    const score =
-        document.getElementById("segregationScore").value;
-
-    const collectorName =
-        document.getElementById("collectorName").value.trim();
-
-    if (!householdId || !pickupTime || score === "") {
-
-        alert("Please fill all required pickup details.");
-
-        return;
-    }
-
-    if (score < 0 || score > 100) {
-
-        alert("Segregation score must be between 0 and 100.");
-
-        return;
-    }
-
+async function fetchHouseholds() {
     try {
-
-        const response = await fetch(
-            `${API}/pickups/${householdId}`,
-            {
-                method: "POST",
-
-                headers: {
-                    "Content-Type": "application/json"
-                },
-
-                body: JSON.stringify({
-                    pickupTime: pickupTime + ":00",
-                    segregationScore: Number(score),
-                    collectorName: collectorName
-                })
-            }
-        );
-
-        if (!response.ok) {
-
-            const error = await response.json();
-
-            throw new Error(
-                error.error || "Failed to record pickup"
-            );
-        }
-
-        alert("Pickup recorded successfully!");
-
-        document.getElementById("pickupForm").reset();
-
-        await loadHouseholds();
-        await loadPickups();
-        await loadFlaggedHouseholds();
-
-        updateDashboard();
-
-    } catch (error) {
-
-        alert(error.message);
-    }
-});
-
-
-// ===============================
-// Flagged Households
-// ===============================
-
-async function loadFlaggedHouseholds() {
-
-    const response =
-        await fetch(`${API}/households/flagged`);
-
-    if (!response.ok) {
-        throw new Error("Failed to load flagged households");
-    }
-
-    const flagged =
-        await response.json();
-
-    displayFlaggedHouseholds(flagged);
+        const res = await fetch(`${API}/households`);
+        if (res.ok) households = await res.json();
+    } catch (e) { console.error("Error fetching households", e); }
 }
 
+async function fetchSchedules() {
+    try {
+        const res = await fetch(`${API}/schedules`);
+        if (res.ok) schedules = await res.json();
+    } catch (e) { console.error("Error fetching schedules", e); }
+}
 
-function displayFlaggedHouseholds(flagged) {
+async function fetchPickups() {
+    try {
+        const res = await fetch(`${API}/pickups`);
+        if (res.ok) pickups = await res.json();
+    } catch (e) { console.error("Error fetching pickups", e); }
+}
 
-    const table =
-        document.getElementById("flaggedTableBody");
+async function fetchZoneAverageScores() {
+    zoneScores = {};
+    for (const z of zones) {
+        try {
+            const res = await fetch(`${API}/zones/${z.id}/average-score`);
+            if (res.ok) {
+                const data = await res.json();
+                zoneScores[z.id] = data.averageScore != null ? data.averageScore : 0;
+            } else {
+                zoneScores[z.id] = 0;
+            }
+        } catch (e) {
+            zoneScores[z.id] = 0;
+        }
+    }
+}
 
-    table.innerHTML = "";
+// ============================================================
+// RENDER: Dashboard
+// ============================================================
+function renderDashboard() {
+    // 1. KPI Counts
+    document.getElementById("kpi-zones").textContent = zones.length;
+    document.getElementById("kpi-households").textContent = households.length;
+    document.getElementById("kpi-pickups").textContent = pickups.length;
 
-    flagged.forEach(household => {
+    // Flagged households count
+    const flaggedList = households.filter(h => h.status === "FLAGGED");
+    document.getElementById("kpi-flagged").textContent = flaggedList.length;
 
-        const row = document.createElement("tr");
+    // 2. Zone Average Scores Table
+    const zoneTable = document.getElementById("dash-zones-table");
+    zoneTable.innerHTML = "";
+    if (zones.length === 0) {
+        zoneTable.innerHTML = `<tr class="empty-row"><td colspan="3">No zones registered yet.</td></tr>`;
+    } else {
+        zones.forEach(z => {
+            const score = zoneScores[z.id] !== undefined ? zoneScores[z.id] : 0;
+            const scoreFormatted = Number(score) === 0 ? "0" : Number(score).toFixed(1);
+            const scoreClass = Number(score) === 0 ? "score-red" : "score-gold";
 
-        row.innerHTML = `
-            <td>${household.id}</td>
-            <td>${household.householdName}</td>
-            <td>${household.address}</td>
-            <td>${household.zone ? household.zone.name : "-"}</td>
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td class="td-id">#${z.id}</td>
+                <td>${escapeHtml(z.name)}</td>
+                <td class="${scoreClass}">★ ${scoreFormatted}</td>
+            `;
+            zoneTable.appendChild(tr);
+        });
+    }
+
+    // 3. Low-Score Flagged Households Table
+    const flaggedTable = document.getElementById("dash-flagged-table");
+    flaggedTable.innerHTML = "";
+    if (flaggedList.length === 0) {
+        flaggedTable.innerHTML = `<tr class="empty-row"><td colspan="5">No flagged households. All meeting thresholds!</td></tr>`;
+    } else {
+        flaggedList.forEach(h => {
+            const tr = document.createElement("tr");
+            const zoneName = h.zone ? h.zone.name : "-";
+            const avg = h.averageScore != null ? h.averageScore : "N/A";
+            tr.innerHTML = `
+                <td class="td-bold">${escapeHtml(h.name)}</td>
+                <td>${escapeHtml(zoneName)}</td>
+                <td>${h.minimumScore != null ? h.minimumScore : 50}</td>
+                <td class="score-red">${avg}</td>
+                <td><span class="badge-flagged">FLAGGED</span></td>
+            `;
+            flaggedTable.appendChild(tr);
+        });
+    }
+}
+
+// ============================================================
+// RENDER: Zones Table
+// ============================================================
+function renderZonesTable(filterText = "") {
+    const tbody = document.getElementById("zones-table-body");
+    tbody.innerHTML = "";
+
+    const filtered = zones.filter(z =>
+        (z.name || "").toLowerCase().includes(filterText.toLowerCase()) ||
+        String(z.id).includes(filterText)
+    );
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="4">No matching zones found.</td></tr>`;
+        return;
+    }
+
+    filtered.forEach(z => {
+        const score = zoneScores[z.id] !== undefined ? zoneScores[z.id] : 0;
+        const scoreFormatted = Number(score) === 0 ? "0" : Number(score).toFixed(1);
+        const scoreClass = Number(score) === 0 ? "score-red" : "score-gold";
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td class="td-id">#${z.id}</td>
+            <td>${escapeHtml(z.name)}</td>
+            <td class="${scoreClass}">★ ${scoreFormatted}</td>
             <td>
-                <span class="status-flagged">
-                    Flagged
-                </span>
+                <div class="action-buttons">
+                    <button class="btn-action-edit" onclick="startEditZone(${z.id})">Edit</button>
+                    <button class="btn-action-delete" onclick="deleteZone(${z.id})">Delete</button>
+                </div>
             </td>
         `;
-
-        table.appendChild(row);
+        tbody.appendChild(tr);
     });
 }
 
+// ============================================================
+// RENDER: Schedules Table
+// ============================================================
+function renderSchedulesTable(filterText = "") {
+    const tbody = document.getElementById("schedules-table-body");
+    tbody.innerHTML = "";
 
-// ===============================
-// Dashboard
-// ===============================
+    const filtered = schedules.filter(s => {
+        const zoneName = s.zone ? s.zone.name : "";
+        const day = s.pickupDay || "";
+        return zoneName.toLowerCase().includes(filterText.toLowerCase()) ||
+               day.toLowerCase().includes(filterText.toLowerCase()) ||
+               String(s.id).includes(filterText);
+    });
 
-function updateDashboard() {
-
-    document.getElementById("zoneCount").textContent =
-        zones.length;
-
-    document.getElementById("householdCount").textContent =
-        households.length;
-
-    document.getElementById("pickupCount").textContent =
-        pickups.length;
-
-    const flaggedCount =
-        households.filter(household => household.flagged).length;
-
-    document.getElementById("flaggedCount").textContent =
-        flaggedCount;
-}
-
-
-// ===============================
-// Date Formatting
-// ===============================
-
-function formatDateTime(dateTime) {
-
-    if (!dateTime) {
-        return "-";
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="6">No schedules found.</td></tr>`;
+        return;
     }
 
-    const date = new Date(dateTime);
-
-    if (isNaN(date.getTime())) {
-        return dateTime;
-    }
-
-    return date.toLocaleString();
+    filtered.forEach(s => {
+        const zoneName = s.zone ? s.zone.name : "-";
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td class="td-id">#${s.id}</td>
+            <td>${escapeHtml(zoneName)}</td>
+            <td><span class="badge-day">${escapeHtml(s.pickupDay || "")}</span></td>
+            <td>${s.startTime ? s.startTime.substring(0, 5) : "--:--"}</td>
+            <td>${s.endTime ? s.endTime.substring(0, 5) : "--:--"}</td>
+            <td>
+                <div class="action-buttons">
+                    <button class="btn-action-edit" onclick="startEditSchedule(${s.id})">Edit</button>
+                    <button class="btn-action-delete" onclick="deleteSchedule(${s.id})">Delete</button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
 }
 
+// ============================================================
+// RENDER: Households Table
+// ============================================================
+function renderHouseholdsTable(filterText = "") {
+    const tbody = document.getElementById("households-table-body");
+    tbody.innerHTML = "";
 
-// ===============================
-// Start Application
-// ===============================
+    const filtered = households.filter(h =>
+        (h.name || "").toLowerCase().includes(filterText.toLowerCase()) ||
+        (h.address || "").toLowerCase().includes(filterText.toLowerCase()) ||
+        (h.phone || "").includes(filterText) ||
+        (h.zone && h.zone.name && h.zone.name.toLowerCase().includes(filterText.toLowerCase())) ||
+        String(h.id).includes(filterText)
+    );
 
-document.addEventListener("DOMContentLoaded", function() {
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="9">No households found.</td></tr>`;
+        return;
+    }
 
-    loadData();
+    filtered.forEach(h => {
+        const zoneName = h.zone ? h.zone.name : "-";
+        const statusBadge = h.status === "FLAGGED"
+            ? `<span class="badge-flagged">FLAGGED</span>`
+            : `<span class="badge-normal">NORMAL</span>`;
 
-});
+        const avgScore = h.averageScore != null ? h.averageScore : "N/A";
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td class="td-id">#${h.id}</td>
+            <td class="td-bold">${escapeHtml(h.name)}</td>
+            <td>${escapeHtml(h.address)}</td>
+            <td>${escapeHtml(h.phone || "-")}</td>
+            <td>${escapeHtml(zoneName)}</td>
+            <td>${h.minimumScore != null ? h.minimumScore : 50}</td>
+            <td>${avgScore}</td>
+            <td>${statusBadge}</td>
+            <td>
+                <div class="action-buttons">
+                    <button class="btn-action-edit" onclick="startEditHousehold(${h.id})">Edit</button>
+                    <button class="btn-action-delete" onclick="deleteHousehold(${h.id})">Delete</button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+// ============================================================
+// RENDER: Pickup Logs Table
+// ============================================================
+function renderPickupsTable(filterText = "") {
+    const tbody = document.getElementById("pickups-table-body");
+    tbody.innerHTML = "";
+
+    const filtered = pickups.filter(p => {
+        const hhName = p.household ? p.household.name : "";
+        const zoneName = p.household && p.household.zone ? p.household.zone.name : (p.schedule && p.schedule.zone ? p.schedule.zone.name : "");
+        return hhName.toLowerCase().includes(filterText.toLowerCase()) ||
+               zoneName.toLowerCase().includes(filterText.toLowerCase()) ||
+               (p.pickupDate || "").includes(filterText) ||
+               String(p.id).includes(filterText);
+    });
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="8">No pickup logs recorded.</td></tr>`;
+        return;
+    }
+
+    // Sort descending by ID or date
+    const sorted = [...filtered].sort((a, b) => (b.id || 0) - (a.id || 0));
+
+    sorted.forEach(p => {
+        const hhName = p.household ? p.household.name : "-";
+        const zoneName = (p.household && p.household.zone) ? p.household.zone.name : (p.schedule && p.schedule.zone ? p.schedule.zone.name : "-");
+        const schedWindow = p.schedule
+            ? `${p.schedule.pickupDay || ""} (${(p.schedule.startTime || "").substring(0, 5)}-${(p.schedule.endTime || "").substring(0, 5)})`
+            : "-";
+
+        const score = p.segregationScore != null ? p.segregationScore : 0;
+        let scoreClass = "score-green";
+        if (score < 50) {
+            scoreClass = "score-red";
+        } else if (score < 60) {
+            scoreClass = "score-gold";
+        }
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td class="td-id">#${p.id}</td>
+            <td>${escapeHtml(hhName)}</td>
+            <td>${escapeHtml(zoneName)}</td>
+            <td>${escapeHtml(schedWindow)}</td>
+            <td>${p.pickupDate || "-"}</td>
+            <td>${p.pickupTime ? p.pickupTime.substring(0, 5) : "--:--"}</td>
+            <td class="${scoreClass}">★ ${score}</td>
+            <td>
+                <div class="action-buttons">
+                    <button class="btn-action-edit" onclick="startEditPickup(${p.id})">Edit</button>
+                    <button class="btn-action-delete" onclick="deletePickup(${p.id})">Delete</button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+// ============================================================
+// Form Dropdowns Population
+// ============================================================
+function updateDropdowns() {
+    // 1. Schedule Zone Dropdown
+    const schedZoneSel = document.getElementById("schedule-zone");
+    const currentSchedZone = schedZoneSel.value;
+    schedZoneSel.innerHTML = `<option value="">-- Choose Zone --</option>`;
+    zones.forEach(z => {
+        schedZoneSel.innerHTML += `<option value="${z.id}">${escapeHtml(z.name)}</option>`;
+    });
+    if (currentSchedZone) schedZoneSel.value = currentSchedZone;
+
+    // 2. Household Zone Dropdown
+    const hhZoneSel = document.getElementById("household-zone");
+    const currentHhZone = hhZoneSel.value;
+    hhZoneSel.innerHTML = `<option value="">-- Choose Zone --</option>`;
+    zones.forEach(z => {
+        hhZoneSel.innerHTML += `<option value="${z.id}">${escapeHtml(z.name)}</option>`;
+    });
+    if (currentHhZone) hhZoneSel.value = currentHhZone;
+
+    // 3. Pickup Household Dropdown
+    const pickupHhSel = document.getElementById("pickup-household");
+    const currentPickupHh = pickupHhSel.value;
+    pickupHhSel.innerHTML = `<option value="">-- Select Household --</option>`;
+    households.forEach(h => {
+        const zoneName = h.zone ? h.zone.name : "No Zone";
+        pickupHhSel.innerHTML += `<option value="${h.id}">${escapeHtml(h.name)} (${escapeHtml(zoneName)})</option>`;
+    });
+    if (currentPickupHh) pickupHhSel.value = currentPickupHh;
+
+    // 4. Update Pickup Schedule Dropdown according to selected household
+    filterPickupScheduleDropdown();
+}
+
+function filterPickupScheduleDropdown() {
+    const pickupHhSel = document.getElementById("pickup-household");
+    const pickupSchedSel = document.getElementById("pickup-schedule");
+    const selectedHhId = Number(pickupHhSel.value);
+
+    pickupSchedSel.innerHTML = `<option value="">-- Select Schedule Window --</option>`;
+
+    let matchingSchedules = schedules;
+    if (selectedHhId) {
+        const hh = households.find(h => h.id === selectedHhId);
+        if (hh && hh.zone && hh.zone.id) {
+            matchingSchedules = schedules.filter(s => s.zone && s.zone.id === hh.zone.id);
+        }
+    }
+
+    matchingSchedules.forEach(s => {
+        const zName = s.zone ? s.zone.name : "Zone";
+        const start = s.startTime ? s.startTime.substring(0, 5) : "";
+        const end = s.endTime ? s.endTime.substring(0, 5) : "";
+        pickupSchedSel.innerHTML += `<option value="${s.id}" data-day="${s.pickupDay}" data-start="${start}" data-end="${end}">
+            ${escapeHtml(zName)} - ${escapeHtml(s.pickupDay)} (${start}-${end})
+        </option>`;
+    });
+}
+
+function setupDropdownCascades() {
+    const pickupHhSel = document.getElementById("pickup-household");
+    const pickupSchedSel = document.getElementById("pickup-schedule");
+
+    pickupHhSel.addEventListener("change", () => {
+        filterPickupScheduleDropdown();
+    });
+
+    // When a schedule is chosen, pre-fill pickup date with nearest matching day & pickup time with start time
+    pickupSchedSel.addEventListener("change", () => {
+        const opt = pickupSchedSel.selectedOptions[0];
+        if (opt && opt.dataset.day) {
+            const targetDay = opt.dataset.day.toUpperCase();
+            const dateInput = document.getElementById("pickup-date");
+            const timeInput = document.getElementById("pickup-time");
+
+            // If time is empty, preset to start time
+            if (!timeInput.value && opt.dataset.start) {
+                timeInput.value = opt.dataset.start;
+            }
+
+            // Set to closest date matching the targetDay
+            const matchedDate = getNearestDayDate(targetDay);
+            if (matchedDate) {
+                dateInput.value = matchedDate;
+            }
+        }
+    });
+}
+
+function getNearestDayDate(dayName) {
+    const days = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+    const targetIdx = days.indexOf(dayName);
+    if (targetIdx === -1) return null;
+
+    const now = new Date();
+    const currentIdx = now.getDay();
+    let diff = targetIdx - currentIdx;
+    if (diff > 0) diff -= 7; // Go to most recent occurrence
+    const targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
+
+    const y = targetDate.getFullYear();
+    const m = String(targetDate.getMonth() + 1).padStart(2, "0");
+    const d = String(targetDate.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+}
+
+// ============================================================
+// Search Filters Setup
+// ============================================================
+function setupSearchFilters() {
+    document.getElementById("search-zones").addEventListener("input", (e) => {
+        renderZonesTable(e.target.value.trim());
+    });
+
+    document.getElementById("search-schedules").addEventListener("input", (e) => {
+        renderSchedulesTable(e.target.value.trim());
+    });
+
+    document.getElementById("search-households").addEventListener("input", (e) => {
+        renderHouseholdsTable(e.target.value.trim());
+    });
+
+    document.getElementById("search-pickups").addEventListener("input", (e) => {
+        renderPickupsTable(e.target.value.trim());
+    });
+}
+
+// ============================================================
+// Form Event Handlers (Create & Update)
+// ============================================================
+function setupFormListeners() {
+    // 1. ZONE FORM
+    const zoneForm = document.getElementById("zone-form");
+    const zoneCancelBtn = document.getElementById("zone-cancel-btn");
+
+    zoneForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const name = document.getElementById("zone-name").value.trim();
+        if (!name) return;
+
+        const payload = { name };
+        try {
+            let res;
+            if (editZoneId) {
+                res = await fetch(`${API}/zones/${editZoneId}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                res = await fetch(`${API}/zones`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+            }
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert(err.message || "Failed to save zone.");
+                return;
+            }
+
+            resetZoneForm();
+            await loadAllData();
+        } catch (err) {
+            alert("Error saving zone: " + err.message);
+        }
+    });
+
+    zoneCancelBtn.addEventListener("click", resetZoneForm);
+
+    // 2. SCHEDULE FORM
+    const schedForm = document.getElementById("schedule-form");
+    const schedCancelBtn = document.getElementById("schedule-cancel-btn");
+
+    schedForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const zoneId = document.getElementById("schedule-zone").value;
+        const pickupDay = document.getElementById("schedule-day").value;
+        const startTime = document.getElementById("schedule-start").value;
+        const endTime = document.getElementById("schedule-end").value;
+
+        if (!zoneId || !pickupDay || !startTime || !endTime) {
+            alert("Please fill in all schedule fields.");
+            return;
+        }
+
+        const payload = {
+            zone: { id: Number(zoneId) },
+            pickupDay: pickupDay,
+            startTime: startTime,
+            endTime: endTime
+        };
+
+        try {
+            let res;
+            if (editScheduleId) {
+                res = await fetch(`${API}/schedules/${editScheduleId}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                res = await fetch(`${API}/schedules`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+            }
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert(err.message || "Failed to save schedule.");
+                return;
+            }
+
+            resetScheduleForm();
+            await loadAllData();
+        } catch (err) {
+            alert("Error saving schedule: " + err.message);
+        }
+    });
+
+    schedCancelBtn.addEventListener("click", resetScheduleForm);
+
+    // 3. HOUSEHOLD FORM
+    const hhForm = document.getElementById("household-form");
+    const hhCancelBtn = document.getElementById("household-cancel-btn");
+
+    hhForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const name = document.getElementById("household-name").value.trim();
+        const address = document.getElementById("household-address").value.trim();
+        const phone = document.getElementById("household-phone").value.trim();
+        const zoneId = document.getElementById("household-zone").value;
+        const minScore = document.getElementById("household-minscore").value;
+
+        if (!name || !address || !phone || !zoneId) {
+            alert("Please fill in all required household fields.");
+            return;
+        }
+
+        const payload = {
+            name: name,
+            address: address,
+            phone: phone,
+            zone: { id: Number(zoneId) },
+            minimumScore: minScore ? Number(minScore) : 50.0
+        };
+
+        try {
+            let res;
+            if (editHouseholdId) {
+                res = await fetch(`${API}/households/${editHouseholdId}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                res = await fetch(`${API}/households`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+            }
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert(err.message || "Failed to save household.");
+                return;
+            }
+
+            resetHouseholdForm();
+            await loadAllData();
+        } catch (err) {
+            alert("Error saving household: " + err.message);
+        }
+    });
+
+    hhCancelBtn.addEventListener("click", resetHouseholdForm);
+
+    // 4. PICKUP LOG FORM
+    const pickupForm = document.getElementById("pickup-form");
+    const pickupCancelBtn = document.getElementById("pickup-cancel-btn");
+
+    pickupForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const householdId = document.getElementById("pickup-household").value;
+        const scheduleId = document.getElementById("pickup-schedule").value;
+        const pickupDate = document.getElementById("pickup-date").value;
+        const pickupTime = document.getElementById("pickup-time").value;
+        const score = document.getElementById("pickup-score").value;
+
+        if (!householdId || !scheduleId || !pickupDate || !pickupTime || score === "") {
+            alert("Please fill in all required pickup log fields.");
+            return;
+        }
+
+        const payload = {
+            household: { id: Number(householdId) },
+            schedule: { id: Number(scheduleId) },
+            pickupDate: pickupDate,
+            pickupTime: pickupTime,
+            segregationScore: Number(score)
+        };
+
+        try {
+            let res;
+            if (editPickupId) {
+                res = await fetch(`${API}/pickups/${editPickupId}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                res = await fetch(`${API}/pickups`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+            }
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert(err.message || "Failed to record pickup log.");
+                return;
+            }
+
+            // Show Success Banner (matching screenshot)
+            const alertBox = document.getElementById("pickup-alert-success");
+            const alertText = document.getElementById("pickup-alert-text");
+            alertText.textContent = `Waste pickup logged successfully! Score: ${score}`;
+            alertBox.classList.remove("hidden");
+
+            resetPickupForm(false);
+            await loadAllData();
+        } catch (err) {
+            alert("Error recording pickup: " + err.message);
+        }
+    });
+
+    pickupCancelBtn.addEventListener("click", () => resetPickupForm(true));
+}
+
+// ============================================================
+// Form Reset & Cancel Helpers
+// ============================================================
+function resetZoneForm() {
+    editZoneId = null;
+    document.getElementById("zone-id").value = "";
+    document.getElementById("zone-form").reset();
+    document.getElementById("zone-form-title").textContent = "Add New Zone";
+    document.getElementById("zone-submit-btn").textContent = "Save Zone";
+    document.getElementById("zone-cancel-btn").classList.add("hidden");
+}
+
+function resetScheduleForm() {
+    editScheduleId = null;
+    document.getElementById("schedule-id").value = "";
+    document.getElementById("schedule-form").reset();
+    document.getElementById("schedule-form-title").textContent = "Add Collection Schedule";
+    document.getElementById("schedule-submit-btn").textContent = "Save Schedule";
+    document.getElementById("schedule-cancel-btn").classList.add("hidden");
+}
+
+function resetHouseholdForm() {
+    editHouseholdId = null;
+    document.getElementById("household-id").value = "";
+    document.getElementById("household-form").reset();
+    document.getElementById("household-minscore").value = "50";
+    document.getElementById("household-form-title").textContent = "Add Household";
+    document.getElementById("household-submit-btn").textContent = "Save Household";
+    document.getElementById("household-cancel-btn").classList.add("hidden");
+}
+
+function resetPickupForm(hideAlert = true) {
+    editPickupId = null;
+    document.getElementById("pickup-id").value = "";
+    document.getElementById("pickup-form").reset();
+    document.getElementById("pickup-form-title").textContent = "Record Waste Pickup";
+    document.getElementById("pickup-submit-btn").textContent = "Record Pickup";
+    document.getElementById("pickup-cancel-btn").classList.add("hidden");
+    filterPickupScheduleDropdown();
+
+    if (hideAlert) {
+        const alertBox = document.getElementById("pickup-alert-success");
+        if (alertBox) alertBox.classList.add("hidden");
+    }
+}
+
+// ============================================================
+// Actions: Edit Handlers
+// ============================================================
+window.startEditZone = function(id) {
+    const z = zones.find(item => item.id === id);
+    if (!z) return;
+
+    editZoneId = z.id;
+    document.getElementById("zone-id").value = z.id;
+    document.getElementById("zone-name").value = z.name || "";
+    document.getElementById("zone-form-title").textContent = `Edit Zone (#${z.id})`;
+    document.getElementById("zone-submit-btn").textContent = "Update Zone";
+    document.getElementById("zone-cancel-btn").classList.remove("hidden");
+
+    document.getElementById("zone-name").focus();
+};
+
+window.startEditSchedule = function(id) {
+    const s = schedules.find(item => item.id === id);
+    if (!s) return;
+
+    editScheduleId = s.id;
+    document.getElementById("schedule-id").value = s.id;
+    document.getElementById("schedule-zone").value = s.zone ? s.zone.id : "";
+    document.getElementById("schedule-day").value = s.pickupDay || "";
+    document.getElementById("schedule-start").value = s.startTime ? s.startTime.substring(0, 5) : "";
+    document.getElementById("schedule-end").value = s.endTime ? s.endTime.substring(0, 5) : "";
+
+    document.getElementById("schedule-form-title").textContent = `Edit Schedule (#${s.id})`;
+    document.getElementById("schedule-submit-btn").textContent = "Update Schedule";
+    document.getElementById("schedule-cancel-btn").classList.remove("hidden");
+};
+
+window.startEditHousehold = function(id) {
+    const h = households.find(item => item.id === id);
+    if (!h) return;
+
+    editHouseholdId = h.id;
+    document.getElementById("household-id").value = h.id;
+    document.getElementById("household-name").value = h.name || "";
+    document.getElementById("household-address").value = h.address || "";
+    document.getElementById("household-phone").value = h.phone || "";
+    document.getElementById("household-zone").value = h.zone ? h.zone.id : "";
+    document.getElementById("household-minscore").value = h.minimumScore != null ? h.minimumScore : 50;
+
+    document.getElementById("household-form-title").textContent = `Edit Household (#${h.id})`;
+    document.getElementById("household-submit-btn").textContent = "Update Household";
+    document.getElementById("household-cancel-btn").classList.remove("hidden");
+
+    document.getElementById("household-name").focus();
+};
+
+window.startEditPickup = function(id) {
+    const p = pickups.find(item => item.id === id);
+    if (!p) return;
+
+    editPickupId = p.id;
+    document.getElementById("pickup-id").value = p.id;
+    document.getElementById("pickup-household").value = p.household ? p.household.id : "";
+
+    filterPickupScheduleDropdown();
+
+    document.getElementById("pickup-schedule").value = p.schedule ? p.schedule.id : "";
+    document.getElementById("pickup-date").value = p.pickupDate || "";
+    document.getElementById("pickup-time").value = p.pickupTime ? p.pickupTime.substring(0, 5) : "";
+    document.getElementById("pickup-score").value = p.segregationScore != null ? p.segregationScore : "";
+
+    document.getElementById("pickup-form-title").textContent = `Edit Pickup Log (#${p.id})`;
+    document.getElementById("pickup-submit-btn").textContent = "Update Pickup";
+    document.getElementById("pickup-cancel-btn").classList.remove("hidden");
+
+    const alertBox = document.getElementById("pickup-alert-success");
+    if (alertBox) alertBox.classList.add("hidden");
+};
+
+// ============================================================
+// Actions: Delete Handlers
+// ============================================================
+window.deleteZone = async function(id) {
+    if (!confirm("Are you sure you want to delete this zone? Schedules and households linked to it may be affected.")) {
+        return;
+    }
+    try {
+        const res = await fetch(`${API}/zones/${id}`, { method: "DELETE" });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            alert(err.message || "Failed to delete zone.");
+            return;
+        }
+        if (editZoneId === id) resetZoneForm();
+        await loadAllData();
+    } catch (err) {
+        alert("Error deleting zone: " + err.message);
+    }
+};
+
+window.deleteSchedule = async function(id) {
+    if (!confirm("Are you sure you want to delete this collection schedule?")) {
+        return;
+    }
+    try {
+        const res = await fetch(`${API}/schedules/${id}`, { method: "DELETE" });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            alert(err.message || "Failed to delete schedule.");
+            return;
+        }
+        if (editScheduleId === id) resetScheduleForm();
+        await loadAllData();
+    } catch (err) {
+        alert("Error deleting schedule: " + err.message);
+    }
+};
+
+window.deleteHousehold = async function(id) {
+    if (!confirm("Are you sure you want to delete this household?")) {
+        return;
+    }
+    try {
+        const res = await fetch(`${API}/households/${id}`, { method: "DELETE" });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            alert(err.message || "Failed to delete household.");
+            return;
+        }
+        if (editHouseholdId === id) resetHouseholdForm();
+        await loadAllData();
+    } catch (err) {
+        alert("Error deleting household: " + err.message);
+    }
+};
+
+window.deletePickup = async function(id) {
+    if (!confirm("Are you sure you want to delete this pickup log?")) {
+        return;
+    }
+    try {
+        const res = await fetch(`${API}/pickups/${id}`, { method: "DELETE" });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            alert(err.message || "Failed to delete pickup log.");
+            return;
+        }
+        if (editPickupId === id) resetPickupForm(true);
+        await loadAllData();
+    } catch (err) {
+        alert("Error deleting pickup log: " + err.message);
+    }
+};
+
+// ============================================================
+// Utilities
+// ============================================================
+function escapeHtml(str) {
+    if (!str) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
