@@ -1,4 +1,7 @@
-package _AD053.Wasteproject.repository;
+package com.example._AD053.Wasteproject.repository;
 
-public class ZoneRepository {
+import com.example._AD053.Wasteproject.entity.Zone;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface ZoneRepository extends JpaRepository<Zone, Long> {
 }
