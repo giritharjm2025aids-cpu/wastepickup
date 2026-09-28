@@ -1,15 +1,12 @@
-package com.example._AD053.Wasteproject.repository;
+package _AD053.Wasteproject.repository;
 
-import com.example._AD053.Wasteproject.entity.Schedule;
+import _AD053.Wasteproject.entity.Schedule;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
-import java.time.DayOfWeek;
 import java.util.List;
 
+@Repository
 public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
-
-    List<Schedule> findByZoneIdAndDayOfWeek(
-            Long zoneId,
-            DayOfWeek dayOfWeek
-    );
+    List<Schedule> findByZoneId(Long zoneId);
 }

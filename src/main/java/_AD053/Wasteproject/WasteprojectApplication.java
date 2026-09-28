@@ -6,8 +6,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class WasteprojectApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(WasteprojectApplication.class, args);
-	}
+    public static void main(String[] args) {
+        SpringApplication.run(WasteprojectApplication.class, args);
+    }
 
 }
